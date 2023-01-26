@@ -3,11 +3,18 @@
 #include <curl/curl.h>
 #include <typeinfo>
 #include <sstream>
+#include <fstream>
+#include <json/json.h>
 #include "os_detection.h"
 
 using namespace std;
 
 string json_final;
+std::string readBuffer;
+
+// Declare URLs as global variables
+const string addDataURL = "https://spp-bill.fly.dev/add_data";
+const string allMhsURL = "https://spp-bill.fly.dev/all_mhs";
 
 struct spp_type
 {   
@@ -57,7 +64,7 @@ void initializeCurl(CURL*& curl) {
 void setCurlOptions(CURL* curl) {
     // This function sets the options for the curl request
     // It sets the URL, the data to be sent in the request, the write function callback and the headers
-    curl_easy_setopt(curl, CURLOPT_URL, "https://spp-bill.fly.dev/add_data");
+    curl_easy_setopt(curl, CURLOPT_URL, addDataURL.c_str());
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_final.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &writeCallback);
     struct curl_slist *headers = NULL;
@@ -90,6 +97,72 @@ void makeCurlRequest() {
     }
 }
 
+// These for retrieving from api server
+
+size_t handleResponse(void *contents, size_t size, size_t nmemb, void *userp)
+{
+    ((std::string*)userp)->append((char*)contents, size * nmemb);
+    return size * nmemb;
+}
+
+bool fetchDataFromURL(std::string& readBuffer) {
+    CURL *curl;
+    CURLcode res;
+
+    curl = curl_easy_init();
+    if (curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, allMhsURL.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, &handleResponse);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+        curl_easy_setopt(curl, CURLOPT_USE_SSL, CURLUSESSL_ALL);
+        res = curl_easy_perform(curl);
+        curl_easy_cleanup(curl);
+
+        if (res != CURLE_OK) {
+            std::cerr << "cURL request failed: " << curl_easy_strerror(res) << std::endl;
+            return false;
+        }
+    }
+    return true;
+}
+
+bool parseJson(std::string& readBuffer, Json::Value& root) {
+    Json::Reader reader;
+
+    if (!reader.parse(readBuffer, root)) {
+        std::cerr << "Failed to parse JSON" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool writeToFile(Json::Value& root) {
+    std::ofstream csvFile("students.csv");
+    csvFile << "id,name,department,sks,fee" << std::endl;
+
+    for (int i = 0; i < root.size(); i++) {
+        csvFile << root[i]["id"].asInt() << ",";
+        csvFile << root[i]["name"].asString() << ",";
+        csvFile << root[i]["department"].asString() << ",";
+        csvFile << root[i]["sks"].asInt() << ",";
+        csvFile << root[i]["fee"].asInt() << std::endl;
+    }
+
+    csvFile.close();
+    return true;
+}
+
+void processData() {
+    std::string readBuffer;
+    Json::Value root;
+
+    if (fetchDataFromURL(readBuffer) && parseJson(readBuffer, root) && writeToFile(root)) {
+        std::cout << "Data successfully written to students.csv" << std::endl << std::endl;
+    } else {
+        std::cerr << "Error: unable to process data" << std::endl;
+    }
+}
+
 
 bool isInteger(std::string str) { 
     // Check if string contains only digits 
@@ -110,17 +183,36 @@ void clearTerminal(string os) {
     }
 }
 
+int input_jumlah_mahasiswa() {
+    string n_mahasiswa;
+    while (true)
+   {
+    cout << "Mau menghitung berapa mahasiswa nih ? ";
+    cin>>n_mahasiswa;
 
-int main() {
-    const int NUM_PROGRAMS = 3;
-    const int NUM_STUDENTS = 2;
-    spp_type list_spp_type[NUM_PROGRAMS] = {
+    if (!isInteger(n_mahasiswa)) {
+        clearTerminal(OS);
+        cout << "!!! Masukan Angka bukan Huruf !!!" << endl;
+        continue;
+    }
+
+    clearTerminal(OS);
+
+    return stoi(n_mahasiswa);
+   }
+}
+
+void HitungSPP() {
+    const int JUMLAH_PRODI = 3;
+    const int NUM_STUDENTS = input_jumlah_mahasiswa();
+    spp_type list_spp_type[JUMLAH_PRODI] = {
         {"Kedokteran", 2000, 1500},
         {"Olahraga", 500, 150},
         {"System Design", 6500, 2050},
     };
     mhs list_mhs[NUM_STUDENTS];
     string pilihan;
+
     
     cout << "######################################################" << endl<< endl;
     cout << "     Yuk Cari Tahu Biaya SPP Mahasiswa di Amikom" << endl;
@@ -137,7 +229,7 @@ int main() {
         {
             cout << "------------------------------------------------------" << endl;
             cout << "Silahkan masukan kode jurusannya:" << endl << endl;
-            for (int j = 0; j < NUM_PROGRAMS; j++) {
+            for (int j = 0; j < JUMLAH_PRODI; j++) {
                 cout << j+1 << " = " << list_spp_type[j].prodi_name << endl;
             }
         
@@ -151,7 +243,7 @@ int main() {
 
             int code = stoi(pilihan) - 1;
             
-            if (code >= 0 && code < NUM_PROGRAMS) {
+            if (code >= 0 && code < JUMLAH_PRODI) {
               list_mhs[i].prodi_code = code;
               break;
 
@@ -201,6 +293,60 @@ int main() {
 
         cout << "-------------------------------------------" << endl;
     }
+}
+
+void export_to_csv() {
+    processData();
+}
+
+void HandleMenuChoice(int choice) {
+    if (choice == 1) {
+        HitungSPP();
+    } else if (choice == 2) {
+        export_to_csv();
+    } else if (choice == 3) {
+        cin.ignore();
+    }
+}
+
+int HandleMenu() {
+    
+    
+    string pilihan;
+    menu:
+    cout<<"========================="<<endl;
+    cout<<"1.Hitung SPP"<<endl;
+    cout<<"2.Export"<<endl;
+    cout<<"3.Exit/Keluar"<<endl;
+    cout<<"========================="<<endl;
+    cout<<"Masukan Angka Pilihan Anda = ";
+    cin>>pilihan;
+    system("clear");
+
+    if (pilihan == "1") {
+        return 1;
+    } else if (pilihan == "2") {
+        return 2;
+    } else if (pilihan == "3") {
+        return 3;
+    } else {
+        cin.ignore();
+        cout<<"Pilihan salah, tekan enter untuk melanjutkan";
+        cin.get();
+        system("clear");
+        goto menu;
+    }
+}
+
+
+int main() {
+
+    int menuChoice;
+    while(1){
+       menuChoice = HandleMenu();
+       if(menuChoice == 3) break;
+       HandleMenuChoice(menuChoice);
+    }    
 
     return 0;
 }
