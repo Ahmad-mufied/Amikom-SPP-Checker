@@ -200,7 +200,7 @@ void clearTerminal(string os) {
 }
 // function that prompts the user for input on how many students they want to calculate the SPP.
 int input_jumlah_mahasiswa() {
-    
+
     // variable to store number of students input
     string n_mahasiswa;
 
@@ -373,7 +373,7 @@ int HandleMenu() {
     menu:
     cout<<"========================="<<endl;
     cout<<"1.Hitung SPP"<<endl;
-    cout<<"2.Export"<<endl;
+    cout<<"2.Export To CSV"<<endl;
     cout<<"3.Exit/Keluar"<<endl;
     cout<<"========================="<<endl;
     cout<<"Masukan Angka Pilihan Anda = ";
